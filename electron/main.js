@@ -96,13 +96,11 @@ ipcMain.handle('git:rewordCommit', async (_, sha, newMessage) => {
     const seqEditor = path.join(tmpDir, 'gs-seq-editor.js')
     const msgFile = path.join(tmpDir, 'gs-commit-msg.txt')
 
-    // Write the new message to a temp file
     fs.writeFileSync(msgFile, newMessage, 'utf8')
 
-    // Script that rewrites the rebase todo: marks our target sha as 'reword'
     const seqEditorScript = `
 const fs = require('fs')
-const file = process.argv[1]
+const file = process.argv[2]
 const lines = fs.readFileSync(file, 'utf8').split('\\n')
 const rewritten = lines.map(line => {
   if (line.startsWith('pick') && line.includes('${sha.slice(0, 7)}')) {
@@ -114,25 +112,96 @@ fs.writeFileSync(file, rewritten.join('\\n'), 'utf8')
 `
     fs.writeFileSync(seqEditor, seqEditorScript, 'utf8')
 
-    // Script that replaces the commit message editor
     const msgEditor = path.join(tmpDir, 'gs-msg-editor.js')
     const msgEditorScript = `
 const fs = require('fs')
-const file = process.argv[1]
+const file = process.argv[2]
 fs.writeFileSync(file, fs.readFileSync('${msgFile.replace(/\\/g, '\\\\')}', 'utf8'), 'utf8')
 `
     fs.writeFileSync(msgEditor, msgEditorScript, 'utf8')
+
+    // Check if this is the root commit (no parent)
+    let rebaseTarget
+    try {
+      await currentRepo.raw(['rev-parse', '--verify', `${sha}^`])
+      rebaseTarget = `${sha}^`
+    } catch {
+      rebaseTarget = '--root'
+    }
 
     await currentRepo.env({
       ...process.env,
       GIT_SEQUENCE_EDITOR: `node "${seqEditor}"`,
       GIT_EDITOR: `node "${msgEditor}"`,
-    }).raw(['rebase', '--interactive', `${sha}^`])
+    }).raw(['rebase', '--interactive', rebaseTarget])
 
     return { success: true }
   } catch (err) {
-    // If rebase left repo in a bad state, abort it
     try { await currentRepo.raw(['rebase', '--abort']) } catch {}
+    return { success: false, error: err.message }
+  }
+})
+
+// Squash a contiguous range of commits into one
+ipcMain.handle('git:squashCommits', async (_, shas, newMessage) => {
+  if (!currentRepo) return { success: false, error: 'No repo open.' }
+
+  try {
+    const tmpDir = os.tmpdir()
+    const seqEditor = path.join(tmpDir, 'gs-seq-editor.js')
+    const msgFile = path.join(tmpDir, 'gs-commit-msg.txt')
+
+    fs.writeFileSync(msgFile, newMessage, 'utf8')
+
+    const seqEditorScript = `
+const fs = require('fs')
+const file = process.argv[2]
+const shas = ${JSON.stringify(shas.map(s => s.slice(0, 7)))}
+const content = fs.readFileSync(file, 'utf8')
+let first = true
+const lines = content.split('\\n')
+const rewritten = lines.map(line => {
+  const match = shas.find(sha => line.startsWith('pick') && line.includes(sha))
+  if (match) {
+    if (first) { first = false; return line }
+    return line.replace(/^pick/, 'squash')
+  }
+  return line
+})
+fs.writeFileSync(file, rewritten.join('\\n'), 'utf8')
+`
+    fs.writeFileSync(seqEditor, seqEditorScript, 'utf8')
+
+    const msgEditor = path.join(tmpDir, 'gs-msg-editor.js')
+    const msgEditorScript = `
+const fs = require('fs')
+const file = process.argv[2]
+fs.writeFileSync(file, fs.readFileSync('${msgFile.replace(/\\/g, '\\\\')}', 'utf8'), 'utf8')
+`
+    fs.writeFileSync(msgEditor, msgEditorScript, 'utf8')
+
+    const oldest = shas[shas.length - 1]
+    await currentRepo.env({
+      ...process.env,
+      GIT_SEQUENCE_EDITOR: `node "${seqEditor}"`,
+      GIT_EDITOR: `node "${msgEditor}"`,
+    }).raw(['rebase', '--interactive', `${oldest}^`])
+
+    return { success: true }
+  } catch (err) {
+    try { await currentRepo.raw(['rebase', '--abort']) } catch {}
+    return { success: false, error: err.message }
+  }
+})
+
+// Force push current branch to remote
+ipcMain.handle('git:forcePush', async () => {
+  if (!currentRepo) return { success: false, error: 'No repo open.' }
+  try {
+    const branch = await currentRepo.revparse(['--abbrev-ref', 'HEAD'])
+    await currentRepo.raw(['push', '--force-with-lease', 'origin', branch.trim()])
+    return { success: true }
+  } catch (err) {
     return { success: false, error: err.message }
   }
 })

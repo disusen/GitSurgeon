@@ -611,6 +611,16 @@ const styles = `
     color: var(--text-muted);
     padding: 4px 2px;
   }
+
+  .btn-danger {
+    background: #7f1d1d;
+    color: #fca5a5;
+    border-color: #991b1b;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #991b1b;
+    border-color: #b91c1c;
+  }
 `
 
 export default styles

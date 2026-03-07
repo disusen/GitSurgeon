@@ -12,10 +12,11 @@ export default function App() {
   const [repoPath, setRepoPath] = useState('')
   const [branch, setBranch] = useState('')
   const [commits, setCommits] = useState([])
-  const [selected, setSelected] = useState(null)           // single selected index for detail pane
-  const [checkedSet, setCheckedSet] = useState(new Set())  // multi-select for squash
+  const [selected, setSelected] = useState(null)
+  const [checkedSet, setCheckedSet] = useState(new Set())
   const [error, setError] = useState('')
   const [modal, setModal] = useState(null)
+  const [isDirty, setIsDirty] = useState(false)
 
   async function handleBrowse() {
     const folder = await window.dialog.openFolder()
@@ -27,6 +28,7 @@ export default function App() {
     setError('')
     setSelected(null)
     setCheckedSet(new Set())
+    setIsDirty(false)
     const result = await window.git.openRepo(path)
     if (!result.success) {
       setError(result.error)
@@ -47,6 +49,7 @@ export default function App() {
       setCommits(log.commits)
       setSelected(0)
       setCheckedSet(new Set())
+      setIsDirty(true)
     }
   }
 
@@ -61,6 +64,10 @@ export default function App() {
 
   function handleClearChecked() {
     setCheckedSet(new Set())
+  }
+
+  function handleForcePushSuccess() {
+    setIsDirty(false)
   }
 
   const selectedCommit = selected !== null ? commits[selected] : null
@@ -79,6 +86,8 @@ export default function App() {
           branch={branch}
           onBrowse={handleBrowse}
           onOpen={loadRepo}
+          isDirty={isDirty}
+          onForcePushSuccess={handleForcePushSuccess}
         />
 
         <div className="main">

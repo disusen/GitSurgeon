@@ -1,10 +1,27 @@
-export default function Toolbar({ repoPath, setRepoPath, branch, onBrowse, onOpen }) {
+import { useState } from 'react'
+
+export default function Toolbar({ repoPath, setRepoPath, branch, onBrowse, onOpen, isDirty, onForcePushSuccess }) {
+  const [pushing, setPushing] = useState(false)
+  const [pushError, setPushError] = useState('')
+
   function handleKeyDown(e) {
     if (e.key === 'Enter' && repoPath.trim()) onOpen(repoPath.trim())
   }
 
+  async function handleForcePush() {
+    setPushing(true)
+    setPushError('')
+    const result = await window.git.forcePush()
+    setPushing(false)
+    if (!result.success) {
+      setPushError(result.error)
+    } else {
+      onForcePushSuccess()
+    }
+  }
+
   return (
-    <div className="toolbar">
+    <div className="toolbar" style={{ flexWrap: 'wrap', gap: pushError ? 4 : undefined }}>
       <div className="toolbar-logo">git<span>/</span>surgeon</div>
 
       <div className="repo-input-wrap">
@@ -34,6 +51,23 @@ export default function Toolbar({ repoPath, setRepoPath, branch, onBrowse, onOpe
             <path d="M18 9a9 9 0 0 1-9 9"/>
           </svg>
           {branch}
+        </div>
+      )}
+
+      {isDirty && branch && (
+        <button
+          className="btn btn-danger"
+          onClick={handleForcePush}
+          disabled={pushing}
+          title="Force push rewrites remote history. Safe only on branches you own."
+        >
+          {pushing ? 'Pushing…' : '⚠️ Force Push'}
+        </button>
+      )}
+
+      {pushError && (
+        <div className="modal-error" style={{ width: '100%', marginTop: 2, fontSize: 11 }}>
+          {pushError}
         </div>
       )}
     </div>

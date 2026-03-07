@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('git', {
   undoCommit: () => ipcRenderer.invoke('git:undoCommit'),
   rewordCommit: (sha, message) => ipcRenderer.invoke('git:rewordCommit', sha, message),
   squashCommits: (shas, message) => ipcRenderer.invoke('git:squashCommits', shas, message),
+  forcePush: () => ipcRenderer.invoke('git:forcePush'),
 })
 
 contextBridge.exposeInMainWorld('dialog', {
